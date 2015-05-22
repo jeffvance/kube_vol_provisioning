@@ -125,9 +125,41 @@ function parse_nodes_brkmnts_blkdevs() {
   return 0
 }
 
+# check_ssh: verify that the user can passwordless ssh to the passed-in list of
+# nodes. Returns 1 on errors.
+# Args: $@ = list of nodes.
+function check_ssh() {
+
+  local nodes="$@"
+  local node; local err; local errcnt=0
+
+  for node in $nodes; do
+      [[ "$node" == "$HOSTNAME" ]] && continue # skip
+      ssh -q $node exit
+      err=$?
+      if (( err != 0 )) ; then
+        echo "ERROR: cannot passwordless ssh to node $node from $HOSTNAME"
+        ((errcnt++))
+      fi
+  done
+
+  (( errcnt > 0 )) && return 1
+  return 0
+}
+
+# uniq_nodes: output the unique nodes from the list of nodes provided.
+# $@=list of nodes.
+function uniq_nodes() {
+
+  local nodes=($@)
+ 
+  printf '%s\n' "${nodes[@]}" | sort -u
+}
+
+
 ## main ##
 
-declare -A NODE_IPS; declare -A NODE_BRKMNTS; declare -A NODE_BLKDEVS
+declare -A NODE_BRKMNTS; declare -A NODE_BLKDEVS
 
 parse_cmd $@ || exit -1
 
@@ -138,16 +170,12 @@ parse_nodes_brkmnts_blkdevs || exit -1
 # in reducing the nodes to just the unique nodes
 UNIQ_NODES=($(uniq_nodes ${NODES[*]}))
 
-# create the NODE_IPS global assoc array, which contains the ip address for all
-# nodes provided by the user
-nodes_to_ips ${UNIQ_NODES[*]}
-
 # use the first storage node for all gluster cli cmds
 FIRST_NODE=${NODES[0]}
 
 # check for passwordless ssh connectivity to nodes
-check_ssh ${UNIQ_NODES[*]} || exit 1
-
+check_ssh ${UNIQ_NODES[*]} $KUBE_MSTR || exit 1
+exit
 
 # check that the block devs are (likely to be) block devices
 check_blkdevs || exit 1
