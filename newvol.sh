@@ -6,6 +6,64 @@
 # TODO:
 #
 
+# functions #
+
+# parse_cmd: use get_opt to parse the command line. Returns 1 on errors.
+#
+function parse_cmd() {
+
+  local long_opts='replica:,kube-master:,volname:'
+  local rand_cmd; local first
+
+  eval set -- "$(getopt -o ' ' --long $long_opts -- $@)"
+
+  while true; do
+      case "$1" in
+        --replica)
+          REPLICA_CNT=$2; shift 2; continue
+        ;;
+        --volname)
+          VOLNAME=$2; shift 2; continue
+        ;;
+        --kube-master)
+          KUBE_MSTR=$2; shift 2; continue
+        ;;
+        --)
+          shift; break
+        ;;
+      esac
+  done
+
+  NODE_SPEC=($@) # array of node:brick-mnt:blk-dev tuplets
+
+  # check any required args and assign defaults
+  [[ -z "$NODE_SPEC" ]] && {
+    echo "ERROR: node-spec argument missing";
+    return 1; }
+
+  if [[ -z "$VOLNAME" ]]; then
+    # generate a random volname, starting with a random uppercase letter
+    first=$(($RANDOM % 26 + 65)) # 65..90
+    VOLNAME=$(printf \\$(printf '%03o' $first)) # poor man's chr()
+    ##rand_cmd="cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 15 | head -n 1"
+    VOLNAME+="$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 15 | head -n 1)"
+    echo "INFO: volume name omitted, using random name \"$VOLNAME\""
+  fi
+
+  if [[ -z "$REPLICA_CNT" ]]; then
+    REPLICA_CNT=2
+    echo "INFO: replica count omitted, using $REPLICA_CNT"
+  fi
+
+  if [[ -z "$KUBE_MSTR" ]]; then
+    KUBE_MSTR="$HOSTNAME"
+    echo "INFO: kube-master omitted, using localhost ($KUBE_MSTR)"
+  fi
+
+  return 0
+}
+
+
 ## main ##
 
 parse_cmd $@ || exit -1
