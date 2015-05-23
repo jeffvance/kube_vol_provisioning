@@ -156,6 +156,21 @@ function uniq_nodes() {
   printf '%s\n' "${nodes[@]}" | sort -u
 }
 
+# vol_exists: invokes gluster vol info to see if the passed in volunme  exists.
+# Returns 1 on errors. 
+# Args:
+#   $1=volume name,
+#   $2=any storage node where gluster cli can be run.
+function vol_exists() {
+
+  local vol="$1"; local node="$2"
+
+  ssh $node "gluster volume info $vol >& /dev/null"
+  (( $? != 0 )) && return 1 # false
+
+  return 0 # true
+}
+
 # check_blkdevs: check that the list of block devices are likely to be block
 # devices. Returns 1 on errors.
 #
@@ -284,6 +299,43 @@ function setup_nodes() {
   return 0
 }
 
+# create_vol: gluster vol create VOLNAME with the replica count.
+#
+function create_vol() {
+
+  local bricks=''; local err; local out; local node; local i 
+  local mnt; local mnts_per_node
+  local mnts=(${BRKMNTS[@]}) # array of all mnts across all nodes
+  let mnts_per_node=(${#mnts[@]} / ${#NODES[@]})
+
+  echo "--- creating the new $VOLNAME volume..."
+
+  # define the brick list -- order matters for replica!
+  # note: round-robin the mnts so that the original command nodes-spec list
+  #   order is preserved
+  for (( i=0; i<mnts_per_node; i++ )); do # typically 1 mnt per node
+     for node in ${NODES[@]}; do
+        mnts=(${BRKMNTS[$node]}) # array, typically 1 mnt entry
+        mnt=${mnts[$i]}
+        bricks+="$node:$mnt/$VOLNAME "
+     done
+  done
+
+  # create the gluster volume
+  out="$(ssh $FIRST_NODE "
+        gluster --mode=script volume create $VOLNAME replica $REPLICA_CNT \
+                $bricks 2>&1"
+  )"
+  err=$?
+  (( err != 0 )) && {
+    echo  "ERROR: $err: gluster vol create $VOLNAME $bricks: $out";
+    return 1; }
+ 
+  echo "--- \"$VOLNAME\" created"
+  return 0
+}
+
+## main ##
 
 declare -A NODE_BRKMNTS; declare -A NODE_BLKDEVS
 
@@ -305,20 +357,17 @@ check_ssh ${UNIQ_NODES[*]} $KUBE_MSTR || exit 1
 # check that the block devs are (likely to be) block devices
 check_blkdevs || exit 1
 
-# setup each storage node, eg. mkfs, etc...
-setup_nodes || exit 1
-exit
-
 # make sure the volume doesn't already exist
 vol_exists $VOLNAME $FIRST_NODE && {
   echo "ERROR: volume \"$VOLNAME\" already exists";
   exit 1; }
 
-# volume name can't conflict with other names under the brick mnts
-path_avail || exit 1
+# setup each storage node, eg. mkfs, etc...
+setup_nodes || exit 1
 
 # create and start the volume
 create_vol || exit 1
+exit
 start_vol  || exit 1
 
 echo
