@@ -193,8 +193,97 @@ function check_blkdevs() {
   return 0
 }
 
+# check_xfs:
+# Args:
+#  1=node,
+#  2=block device path,
+#
+function check_xfs() {
 
-## main ##
+  local node="$1"; local blkdev="$2"
+  local isize=512
+
+  ssh $node "
+     if ! xfs_info $blkdev >& /dev/null ; then
+       mkfs -t xfs -i size=$isize -f $blkdev 2>&1
+       (( \$? != 0 )) && {
+         echo "ERROR $err on $node: mkfs.xfs on $blkdev";
+         exit 1; }
+     fi
+     exit 0
+  "
+
+  (( $? != 0 )) && return 1
+  return 0
+}
+
+# mount_blkdev: create the brick-mnt dir(s) if needed, append the xfs brick
+# mount to /etc/fstab, and then mount it. Returns 1 on errors.
+# Args:
+#  1=node,
+#  2=block device path,
+#  3=brick mount path
+#
+function mount_blkdev() {
+
+  local node="$1"; local blkdev="$2"; local brkmnt="$3"
+  local mntopts="noatime,inode64"
+
+  ssh $node "
+     # create brk-mnt dir
+     [[ ! -e $brkmnt ]] && mkdir -p $brkmnt
+     # does brk mnt already exist in fstab?
+     (grep $brkmnt /etc/fstab \
+        | grep -vE '^#|^ *#' \
+	| grep xfs) >/dev/null
+     if (( \$? != 0 )); then # add to fstab
+       echo \"$blkdev $brkmnt xfs $mntopts 0 0\" >>/etc/fstab
+     fi
+     # is brk mnt currently mounted?
+     (grep $brkmnt /proc/mounts \
+        | grep -vE '^#|^ *#' \
+	| grep xfs) >/dev/null
+     if (( \$? != 0 )); then # mount blk dev
+       mount $brkmnt 2>&1 # via fstab entry
+       (( \$? != 0 )) && {
+         echo \"ERROR $err on $node: mount $blkdev as $brkmnt\";
+         exit 1; }
+     fi
+     exit 0
+  "
+
+  (( $? != 0 )) && return 1
+  return 0
+}
+
+# setup_nodes: performs steps on each storage node needed for a gluster volume.
+# Returns 1 on errors.
+#
+function setup_nodes() {
+
+  local err; local errcnt=0
+  local node; local brkmnt; local blkdev; local i
+
+  for node in ${NODES[@]}; do
+     brkmnts="${NODE_BRKMNTS[$node]}" # 1 or more brk-mnt path(s)
+     blkdevs="${NODE_BLKDEVS[$node]}" # 1 or more blk-dev path(s)
+
+     # xfs
+     for blkdev in $blkdevs; do # typically just one
+        check_xfs $node $blkdev || ((errcnt++))
+     done
+     (( errcnt > 0 )) && return 1
+
+     # mount blkdev(s)
+     for (( i=0; i<${#blkdevs[@]}; i++ )); do # tyically just one
+        mount_blkdev $node $blkdevs[$i] brkmnts[$i] || ((errcnt++))
+     done
+     (( errcnt > 0 )) && return 1
+  done
+
+  return 0
+}
+
 
 declare -A NODE_BRKMNTS; declare -A NODE_BLKDEVS
 
@@ -215,10 +304,10 @@ check_ssh ${UNIQ_NODES[*]} $KUBE_MSTR || exit 1
 
 # check that the block devs are (likely to be) block devices
 check_blkdevs || exit 1
-exit
 
 # setup each storage node, eg. mkfs, etc...
 setup_nodes || exit 1
+exit
 
 # make sure the volume doesn't already exist
 vol_exists $VOLNAME $FIRST_NODE && {
