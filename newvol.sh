@@ -138,7 +138,7 @@ function check_ssh() {
       ssh -q $node exit
       err=$?
       if (( err != 0 )) ; then
-        echo "ERROR: cannot passwordless ssh to node $node from $HOSTNAME"
+        echo "ERROR: cannot passwordless ssh to node $node"
         ((errcnt++))
       fi
   done
@@ -154,6 +154,43 @@ function uniq_nodes() {
   local nodes=($@)
  
   printf '%s\n' "${nodes[@]}" | sort -u
+}
+
+# check_blkdevs: check that the list of block devices are likely to be block
+# devices. Returns 1 on errors.
+#
+function check_blkdevs() {
+
+  local node; local blkdev; local err; local errcnt=0; local out
+
+  echo "--- checking block devices..."
+
+  for node in ${NODES[@]}; do
+      out="$(ssh $node "
+          errs=0
+          for blkdev in ${NODE_BLKDEVS[$node]}; do
+              if [[ ! -e \$blkdev ]] ; then
+                echo \"\$blkdev does not exist on $node\"
+                ((errs++))
+                continue
+              fi
+              if [[ -b \$blkdev && ! -L \$blkdev ]] ; then
+                echo \"\$blkdev on $node must be a logical volume but appears to be a raw block device. Expecting: /dev/VGname/LVname\"
+                ((errs++))
+                continue
+              fi
+          done
+          (( errs > 0 )) && exit 1 || exit 0
+        ")"
+      err=$?
+      (( err != 0 )) && {
+        ((errcnt++));
+        echo "ERROR: $out"; }
+  done
+
+  echo "--- done checking block devices"
+  (( errcnt > 0 )) && return 1
+  return 0
 }
 
 
@@ -175,10 +212,10 @@ FIRST_NODE=${NODES[0]}
 
 # check for passwordless ssh connectivity to nodes
 check_ssh ${UNIQ_NODES[*]} $KUBE_MSTR || exit 1
-exit
 
 # check that the block devs are (likely to be) block devices
 check_blkdevs || exit 1
+exit
 
 # setup each storage node, eg. mkfs, etc...
 setup_nodes || exit 1
