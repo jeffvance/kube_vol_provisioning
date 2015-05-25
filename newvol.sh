@@ -256,7 +256,6 @@ function mount_blkdev() {
      fi
      # is brk mnt currently mounted?
      (grep $brkmnt /proc/mounts \
-        | grep -vE '^#|^ *#' \
 	| grep xfs) >/dev/null
      if (( \$? != 0 )); then # mount blk dev
        mount $brkmnt 2>&1 # via fstab entry
