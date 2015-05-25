@@ -8,14 +8,33 @@
 
 # functions #
 
+# rand_name: outputs a random name of N-1 characters, with the first char being
+# a random uppercase letter.
+#
+function rand_name() {
+
+  local n=$1 # total length of name
+  local first; local name
+
+  n=$((n-1)) # since 1st char is always a letter
+  first=$(($RANDOM % 26 + 65)) # 65..90
+
+  name=$(printf \\$(printf '%03o' $first)) # poor man's chr()
+  name+="$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w $n | head -n 1)"
+
+  echo "$name"
+  return 0
+}
+
 # parse_cmd: use get_opt to parse the command line. Returns 1 on errors.
 #
 function parse_cmd() {
 
-  local long_opts='replica:,kube-master:,volname:'
+  local opts='f:'
+  local long_opts='replica:,kube-master:,volname:,size:'
   local first
 
-  eval set -- "$(getopt -o ' ' --long $long_opts -- $@)"
+  eval set -- "$(getopt -o $opts --long $long_opts -- $@)"
 
   while true; do
       case "$1" in
@@ -28,6 +47,12 @@ function parse_cmd() {
         --kube-master)
           KUBE_MSTR=$2; shift 2; continue
         ;;
+        --size) # required
+          VOLSIZE=$2; shift 2; continue
+        ;;
+        -f)
+          OUTFILE=$2; shift 2; continue
+        ;;
         --)
           shift; break
         ;;
@@ -37,16 +62,24 @@ function parse_cmd() {
   NODE_SPEC=($@) # array of node:brick-mnt:blk-dev tuplets
 
   # check any required args and assign defaults
+  [[ -z "$VOLSIZE" ]] && {
+    echo "Syntax error: volume size (--size) is required";
+    exit -1; }
+
   [[ -z "$NODE_SPEC" ]] && {
-    echo "ERROR: node-spec argument missing";
+    echo "Syntax error: node-spec-list argument is missing";
     return 1; }
 
   if [[ -z "$VOLNAME" ]]; then
-    # generate a random volname, starting with a random uppercase letter
-    first=$(($RANDOM % 26 + 65)) # 65..90
-    VOLNAME=$(printf \\$(printf '%03o' $first)) # poor man's chr()
-    VOLNAME+="$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 15 | head -n 1)"
+    # generate a random volname
+    VOLNAME=$(rand_name 16)
     echo "INFO: volume name omitted, using random name \"$VOLNAME\""
+  fi
+
+  if [[ -z "$OUTFILE" ]]; then
+    # default output file is VOLNAME+.yaml
+    OUTFILE="${VOLNAME}.yaml"
+    echo "INFO: output yaml file name omitted, using \"$OUTFILE\""
   fi
 
   if [[ -z "$REPLICA_CNT" ]]; then
@@ -125,8 +158,8 @@ function parse_nodes_brkmnts_blkdevs() {
   return 0
 }
 
-# check_ssh: verify that the user can passwordless ssh to the passed-in list of
-# nodes. Returns 1 on errors.
+# check_ssh: verify that the user can passwordless ssh as root to the passed-in
+# list of nodes. Returns 1 on errors.
 # Args: $@ = list of nodes.
 function check_ssh() {
 
@@ -134,8 +167,7 @@ function check_ssh() {
   local node; local err; local errcnt=0
 
   for node in $nodes; do
-      [[ "$node" == "$HOSTNAME" ]] && continue # skip
-      ssh -q $node exit
+      ssh -q root@$node exit
       err=$?
       if (( err != 0 )) ; then
         echo "ERROR: cannot passwordless ssh to node $node"
@@ -156,6 +188,64 @@ function uniq_nodes() {
   printf '%s\n' "${nodes[@]}" | sort -u
 }
 
+# nodes_to_ips: set the global NODE_IPS variable which contains the ip address
+# for the storage nodes. Typically each node is a hostname rather than an ip
+# address. If the passed-in node is already an ip address it is still added to
+# the NODE_IPS array.
+# Args: $@, list of unique storage node names.
+# Assumption: the list of passed-in nodes is *unique*, that way the output has
+#   only 1 ip-addr as the value of each node.
+#
+function nodes_to_ips() {
+
+  local node
+
+  # nested function returns 0/true if the passed-in node appears to be an ipv4
+  # address, else returns 1.
+  function is_ip_addr() {
+
+    local octet='(25[0-5]|2[0-4][0-9]|[01]?[0-9]?[0-9])' # cannot exceed 255
+    local ipv4="^$octet\.$octet\.$octet\.$octet$"
+
+    [[ "$1" =~ $ipv4 ]] && return 0 # true
+    return 1 # false
+  }
+
+  # nested function to convert the passed-in node to its ip address. If the
+  # node is already an ip addr then just output the ip addr. Returns 1 if 
+  # getent cannot convert a hostname to an ip and outputs the node in its
+  # original host format.
+  function hostname_to_ip() {
+
+    local node="$1"
+    local ip; local err
+
+    if is_ip_addr $node; then
+      echo "$node"
+    else
+      ip="$(getent hosts $node)" # uses dns or /etc/hosts
+      err=$?
+      if (( err != 0 )) || [[ -z "$ip" ]]; then
+        echo "$node"
+      else
+        echo "${ip%% *}" # ip addr
+      fi
+    fi
+
+    (( err != 0 )) && return 1
+    return 0
+  }
+
+  # main #
+
+  for node in $@; do
+     NODE_IPS[$node]="$(hostname_to_ip $node)"
+     (( $? != 0 )) && echo "WARN: $node could not be converted to an ip address"
+  done
+
+  return 0
+}
+
 # vol_exists: invokes gluster vol info to see if the passed in volunme  exists.
 # Returns 1 on errors. 
 # Args:
@@ -165,7 +255,7 @@ function vol_exists() {
 
   local vol="$1"; local node="$2"
 
-  ssh $node "gluster volume info $vol >& /dev/null"
+  ssh root@$node "gluster volume info $vol >& /dev/null"
   (( $? != 0 )) && return 1 # false
 
   return 0 # true
@@ -181,7 +271,7 @@ function check_blkdevs() {
   echo "--- checking block devices..."
 
   for node in ${NODES[@]}; do
-      out="$(ssh $node "
+      out="$(ssh root@$node "
           errs=0
           for blkdev in ${NODE_BLKDEVS[$node]}; do
               if [[ ! -e \$blkdev ]] ; then
@@ -218,7 +308,7 @@ function check_xfs() {
   local node="$1"; local blkdev="$2"
   local isize=512
 
-  ssh $node "
+  ssh root@$node "
      if ! xfs_info $blkdev >& /dev/null ; then
        mkfs -t xfs -i size=$isize -f $blkdev 2>&1
        (( \$? != 0 )) && {
@@ -244,7 +334,7 @@ function mount_blkdev() {
   local node="$1"; local blkdev="$2"; local brkmnt="$3"
   local mntopts="noatime,inode64"
 
-  ssh $node "
+  ssh root@$node "
      # create brk-mnt dir
      [[ ! -e $brkmnt ]] && mkdir -p $brkmnt
      # does brk mnt already exist in fstab?
@@ -321,7 +411,7 @@ function create_vol() {
   done
 
   # create the gluster volume
-  out="$(ssh $FIRST_NODE "
+  out="$(ssh root@$FIRST_NODE "
         gluster --mode=script volume create $VOLNAME replica $REPLICA_CNT \
                 $bricks 2>&1"
   )"
@@ -340,7 +430,7 @@ function start_vol() {
 
   local err; local out
 
-  out="$(ssh $FIRST_NODE "gluster --mode=script volume start $VOLNAME 2>&1")"
+  out="$(ssh root@$FIRST_NODE "gluster --mode=script volume start $VOLNAME 2>&1")"
   err=$?
   if (( err != 0 )) ; then # either serious error or vol already started
     if ! grep -qs ' already started' <<<$out ; then
@@ -351,10 +441,71 @@ function start_vol() {
   return 0
 }
 
+# make_yaml: write the kubernetes glusterfs endpoints and PersistentVolume yaml
+# files.
+#
+function make_yaml() {
+
+  function make_endpoints() {
+
+    local f="$VOLNAME-endpoints.yaml"
+    local buf=''; local node
+
+    buf+='kind: Endpoints\n'
+    buf+='apiVersion: v1beta3\n'
+    buf+='metadata:\n'
+    buf+="  name: $VOLNAME-endpoints\n"
+    buf+='subsets:\n'
+
+    for node in ${UNIQ_NODES[@]}; do
+       buf+='  - addresses:\n'
+       buf+="    IP: ${NODE_IPS[$node]}\n"
+    done
+
+    buf+='  accessModes:\n'
+    buf+='    - ReadWriteOnce\n'
+    buf+='  glusterfs:\n'
+    buf+="    path: $VOLNAME\n"
+    buf+='    readOnly: true\n'
+  
+    echo "$buf" >$f
+  }
+
+  function make_persistent_storage() {
+
+    local f="$VOLNAME-storage.yaml"
+    local buf=''
+
+    buf+='kind: PersistentVolume\n'
+    buf+='apiVersion: v1beta3\n'
+    buf+='metadata:\n'
+    buf+="  name: pv_$VOLNAME\n"
+    buf+='  labels:\n'
+    buf+='spec:\n'
+    buf+='  capacity:\n'
+    buf+="    storage: $VOLSIZE\n"
+    buf+='  accessModes:\n'
+    buf+='    - ReadWriteOnce\n'
+    buf+='  glusterfs:\n'
+    buf+="    path: $VOLNAME\n"
+    buf+='    readOnly: true\n'
+
+    echo "$buf" >$f
+  }
+
+  # main #
+  make_endpoints
+  make_persistent_storage
+
+  return 0
+}
+
 
 ## main ##
 
-declare -A NODE_BRKMNTS; declare -A NODE_BLKDEVS
+declare -A NODE_IPS
+declare -A NODE_BRKMNTS
+declare -A NODE_BLKDEVS
 
 parse_cmd $@ || exit -1
 
@@ -364,6 +515,10 @@ parse_nodes_brkmnts_blkdevs || exit -1
 # for cases where storage nodes are repeated there is some improved efficiency
 # in reducing the nodes to just the unique nodes
 UNIQ_NODES=($(uniq_nodes ${NODES[*]}))
+
+# create the NODE_IPS global assoc array, which contains the ip address for all
+# nodes provided by the user
+nodes_to_ips ${UNIQ_NODES[*]}
 
 # use the first storage node for all gluster cli cmds
 FIRST_NODE=${NODES[0]}
@@ -375,21 +530,22 @@ check_ssh ${UNIQ_NODES[*]} $KUBE_MSTR || exit 1
 check_blkdevs || exit 1
 
 # make sure the volume doesn't already exist
-vol_exists $VOLNAME $FIRST_NODE && {
-  echo "ERROR: volume \"$VOLNAME\" already exists";
-  exit 1; }
+##vol_exists $VOLNAME $FIRST_NODE && {
+  ##echo "ERROR: volume \"$VOLNAME\" already exists";
+  ##exit 1; }
 
 # setup each storage node, eg. mkfs, etc...
 setup_nodes || exit 1
 
 # create and start the volume
-create_vol || exit 1
-start_vol  || exit 1
+##create_vol || exit 1
+##start_vol  || exit 1
 
-# create json (or yaml) file to make new volume known to kubernetes
+# create yaml file to make new volume known to kubernetes
+make_yaml
 
 # execute the kube persistent vol request
 
 echo
-echo "  Volume \"VOLNAME\" created and made available to kubernetes"
+echo "  Volume \"$VOLNAME\" created and made available to kubernetes"
 exit 0
