@@ -334,6 +334,24 @@ function create_vol() {
   return 0
 }
 
+# start_vol: gluster vol start VOLNAME. Returns 1 on errors.
+#
+function start_vol() {
+
+  local err; local out
+
+  out="$(ssh $FIRST_NODE "gluster --mode=script volume start $VOLNAME 2>&1")"
+  err=$?
+  if (( err != 0 )) ; then # either serious error or vol already started
+    if ! grep -qs ' already started' <<<$out ; then
+      echo "ERROR: $err: gluster vol start $VOLNAME: $out"
+      return 1
+    fi
+  fi
+  return 0
+}
+
+
 ## main ##
 
 declare -A NODE_BRKMNTS; declare -A NODE_BLKDEVS
@@ -366,8 +384,11 @@ setup_nodes || exit 1
 
 # create and start the volume
 create_vol || exit 1
-exit
 start_vol  || exit 1
+
+# create json (or yaml) file to make new volume known to kubernetes
+
+# execute the kube persistent vol request
 
 echo
 echo "  Volume \"VOLNAME\" created and made available to kubernetes"
