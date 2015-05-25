@@ -10,7 +10,7 @@ The newvol.sh script creates and starts a new gluster volume (after ensuring tha
 
 ```
   arg | meaning and default
-  --- | ------------------
+  :-: | ------------------
   r | replica count for each volume, default=2
   node | name of kube-master node, default is localhost
   name | volume name, default is a random name
