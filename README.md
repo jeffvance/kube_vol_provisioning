@@ -8,6 +8,7 @@ The newvol.sh script creates and starts a new gluster volume (after ensuring tha
  newvol.sh [--replica <r>] [--kube-master <node> ] [--volname <name>] \
            [-f <yaml>] --size <n>  <nodeSpecList>
 
+```
   arg | meaning and default
   --- | ------------------
   r | replica count for each volume, default=2
@@ -16,4 +17,3 @@ The newvol.sh script creates and starts a new gluster volume (after ensuring tha
   n | size of volume to be provisioned to kubernetes
   nodeSpecList | list of node:brick-mnt-path:brick-dev-path ...
 
-```
