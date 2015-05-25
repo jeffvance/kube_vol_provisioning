@@ -443,44 +443,49 @@ function start_vol() {
 
 # make_yaml: write the kubernetes glusterfs endpoints and PersistentVolume yaml
 # files.
+# Args: $1=prefix used in constructing the yaml file names, typically the
+#   volume name.
 #
 function make_yaml() {
 
-  function make_endpoints() {
+  local prefix="$1"
+  YAML_FILES='' # global
+  ENDPOINTS_NAME="${VOLNAME,,}-endpoints" # global, down-case volname
+  PV_NAME="pv-${VOLNAME,,}" # global, down-case volname
 
-    local f="$VOLNAME-endpoints.yaml"
+  function make_endpoints_yaml() {
+
+    local f="${prefix}-endpoints.yaml"
     local buf=''; local node
 
     buf+='kind: Endpoints\n'
     buf+='apiVersion: v1beta3\n'
     buf+='metadata:\n'
-    buf+="  name: $VOLNAME-endpoints\n"
+    buf+="  name: $ENDPOINTS_NAME\n"
     buf+='subsets:\n'
 
     for node in ${UNIQ_NODES[@]}; do
-       buf+='  - addresses:\n'
-       buf+="    IP: ${NODE_IPS[$node]}\n"
+       buf+='  -\n'
+       buf+='    addresses:\n'
+       buf+="    - IP: ${NODE_IPS[$node]}\n"
+       buf+='    ports:\n' # port number doesn't matter
+       buf+='    - port: 1\n'
+       buf+='      protocol: TCP\n'
     done
-
-    buf+='  accessModes:\n'
-    buf+='    - ReadWriteOnce\n'
-    buf+='  glusterfs:\n'
-    buf+="    path: $VOLNAME\n"
-    buf+='    readOnly: true\n'
   
-    echo "$buf" >$f
+    echo -e -n "$buf" >$f
+    YAML_FILES+="$f "
   }
 
-  function make_persistent_storage() {
+  function make_persistent_storage_yaml() {
 
-    local f="$VOLNAME-storage.yaml"
+    local f="${prefix}-storage.yaml"
     local buf=''
 
     buf+='kind: PersistentVolume\n'
     buf+='apiVersion: v1beta3\n'
     buf+='metadata:\n'
-    buf+="  name: pv_$VOLNAME\n"
-    buf+='  labels:\n'
+    buf+="  name: PV_NAME\n"
     buf+='spec:\n'
     buf+='  capacity:\n'
     buf+="    storage: $VOLSIZE\n"
@@ -490,13 +495,52 @@ function make_yaml() {
     buf+="    path: $VOLNAME\n"
     buf+='    readOnly: true\n'
 
-    echo "$buf" >$f
+    echo -e -n "$buf" >$f
+    YAML_FILES+="$f "
   }
 
   # main #
-  make_endpoints
-  make_persistent_storage
+  make_endpoints_yaml "$1"
+  make_persistent_storage_yaml "$1"
 
+  return 0
+}
+
+# function do_kubectl: execute kubectl to create each of the files in the
+# YAML_FILES list. Args: $@=list of yaml files.
+#
+function do_kubectl() {
+
+  local f; local errcnt=0
+
+  for f in $@; do
+     echo "kubectl create -f $f..."
+     [[ "$KUBE_MSTR" != "$HOSTNAME" ]] && scp $f root@$KUBE_MSTR:$f
+     ssh root@$KUBE_MSTR "
+        kubectl create -f $f
+        (( \$? != 0 )) && exit 1
+        exit 0
+     "
+     (( $? != 0 )) && ((errcnt++))
+  done
+
+  (( errcnt > 0 )) && return 1
+  return 0
+}
+
+# show_kube_status: show the output from kubectl get endpoints and xxx.
+#
+function show_kube_status() {
+
+  echo
+  ssh root@$KUBE_MSTR "
+     echo \"--- $ENDPOINTS_NAME endpoint ---\"
+     kubectl get endpoints $ENDPOINTS_NAME
+     echo
+     echo \"--- $PV_NAME persistent volume ---\"
+     kubectl get pv $PV_NAME
+  "
+  echo
   return 0
 }
 
@@ -529,23 +573,22 @@ check_ssh ${UNIQ_NODES[*]} $KUBE_MSTR || exit 1
 # check that the block devs are (likely to be) block devices
 check_blkdevs || exit 1
 
-# make sure the volume doesn't already exist
-##vol_exists $VOLNAME $FIRST_NODE && {
-  ##echo "ERROR: volume \"$VOLNAME\" already exists";
-  ##exit 1; }
+# if the volume already exists then skip setup, create, and start of vol
+if ! vol_exists $VOLNAME $FIRST_NODE; then
+  # setup each storage node, eg. mkfs, etc...
+  setup_nodes || exit 1
+  create_vol  || exit 1
+  start_vol   || exit 1
+fi
 
-# setup each storage node, eg. mkfs, etc...
-setup_nodes || exit 1
-
-# create and start the volume
-##create_vol || exit 1
-##start_vol  || exit 1
-
-# create yaml file to make new volume known to kubernetes
-make_yaml
+# create yaml files (sets global YAML_FILES variable) to make new volume
+# known to kubernetes
+make_yaml "$VOLNAME"
 
 # execute the kube persistent vol request
+do_kubectl $YAML_FILES || exit 1
 
-echo
+show_kube_status
+
 echo "  Volume \"$VOLNAME\" created and made available to kubernetes"
 exit 0
