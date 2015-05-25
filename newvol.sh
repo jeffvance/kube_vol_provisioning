@@ -485,7 +485,7 @@ function make_yaml() {
     buf+='kind: PersistentVolume\n'
     buf+='apiVersion: v1beta3\n'
     buf+='metadata:\n'
-    buf+="  name: PV_NAME\n"
+    buf+="  name: $PV_NAME\n"
     buf+='spec:\n'
     buf+='  capacity:\n'
     buf+="    storage: $VOLSIZE\n"
@@ -494,6 +494,7 @@ function make_yaml() {
     buf+='  glusterfs:\n'
     buf+="    path: $VOLNAME\n"
     buf+='    readOnly: true\n'
+    buf+='    endpoints: $ENDPOINTS_NAME\n'
 
     echo -e -n "$buf" >$f
     YAML_FILES+="$f "
@@ -570,15 +571,12 @@ FIRST_NODE=${NODES[0]}
 # check for passwordless ssh connectivity to nodes
 check_ssh ${UNIQ_NODES[*]} $KUBE_MSTR || exit 1
 
-# check that the block devs are (likely to be) block devices
-check_blkdevs || exit 1
-
 # if the volume already exists then skip setup, create, and start of vol
 if ! vol_exists $VOLNAME $FIRST_NODE; then
-  # setup each storage node, eg. mkfs, etc...
-  setup_nodes || exit 1
-  create_vol  || exit 1
-  start_vol   || exit 1
+  check_blkdevs || exit 1 # are block devs likely actual block devices?
+  setup_nodes   || exit 1 # setup each storage node, eg. mkfs, etc...
+  create_vol    || exit 1
+  start_vol     || exit 1
 fi
 
 # create yaml files (sets global YAML_FILES variable) to make new volume
@@ -590,5 +588,5 @@ do_kubectl $YAML_FILES || exit 1
 
 show_kube_status
 
-echo "  Volume \"$VOLNAME\" created and made available to kubernetes"
+echo "Volume \"$VOLNAME\" made available to kubernetes"
 exit 0

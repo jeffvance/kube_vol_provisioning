@@ -1,9 +1,12 @@
 # Provisioning Gluster Volumes for Kubernetes
 
-The newvol.sh script performs the following:
+The *newvol.sh* script performs the following:
 
-* ensures that the underlying bricks are mounted on an xfs file system,
-* creates and starts a new gluster volume,
+* optionally creates a new gluster volume if the supplied volume does not exist
+in the trusted storage pool,
+* if the volume is new:
+ * ensures that the underlying bricks are mounted on an xfs file system,
+ * creates and starts a new gluster volume,
 * creates an endpoints  yaml file representing the glusterfs storage nodes,
 * creates a persistent volume yaml file representing the new storage capacity,
 * executes kubectl to make the new storage visible to kubernetes.
