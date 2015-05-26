@@ -576,15 +576,17 @@ function do_kubectl() {
 #
 function show_kube_status() {
 
+  local err
+
   echo
   ssh root@$KUBE_MSTR "
-     echo \"--- $ENDPOINTS_NAME endpoint ---\"
-     kubectl get endpoints $ENDPOINTS_NAME
-     echo
-     echo \"--- $PV_NAME persistent volume ---\"
-     kubectl get pv $PV_NAME
+     kubectl get endpoints $ENDPOINTS_NAME && \
+       kubectl get pv $PV_NAME
   "
+  err=$?
+
   echo
+  (( err == 0 )) && echo "Volume \"$VOLNAME\" made available to kubernetes"
   return 0
 }
 
@@ -631,5 +633,4 @@ do_kubectl $YAML_FILES || exit 1
 
 show_kube_status
 
-echo "Volume \"$VOLNAME\" made available to kubernetes"
 exit 0
