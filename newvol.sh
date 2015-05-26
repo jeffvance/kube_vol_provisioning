@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Optionally creatse a new volume in an existing trusted storage pool, and makes
+# Optionally creates a new volume in an existing trusted storage pool, and makes
 # the passed-in volume available to kubernetes.
 #
 # TODO:
