@@ -1,12 +1,60 @@
 #!/bin/bash
 #
-# Create a new volume in an existing trusted storage pool and make that volume
-# available to kubernetes.
+# Optionally creatse a new volume in an existing trusted storage pool, and makes
+# the passed-in volume available to kubernetes.
 #
 # TODO:
 #
 
 # functions #
+
+# usage: print usage and return.
+#
+function usage() {
+
+  cat <<EOF
+
+  Usage:
+    newvol.sh [--replica <r>] [--kube-master <node> ] [--volname <vname>] \
+           --size <n>  <nodeSpec>
+
+  where:
+
+    r         : replic count, default=2
+    node      : kubernetes master node, default is localhost
+    vname     : name of existing or new glusterfs volume
+    n         : (required) size to be provisioned to kubernetes persistent
+                storage pool
+    nodeSpec  : (required) list of 1 or more storage nodes. If <vname> is new
+                then this list must contain at list 2 nodes and the brick mount
+                and block device path must be specified per node using ":" as a
+                separator, eg. "node1:/mnt/brick:/dev/VG1/LV1". The brick and
+                block dev names do not need to be repeated for subsequent nodes
+                if same names are used on each node in the list. If <vname> 
+                exists then only the node names are required in the nodeSpec
+                list (brick and block dev names can be omitted and are ignored).
+                The node names are needed to define storage endpoints.
+   
+EOF
+  return 0
+}
+
+# help: output simple help text plus usage.
+function help() {
+
+  cat <<EOF
+
+  Optionally create a new glusterfs volume spanning the supplied nodes and
+  bricks, create yaml files representing the endpoints of the storage nodes,
+  create a yaml file representing a new persistent volume to be made available
+  to kubernetes, supply these yaml files to kubectl create, and show the 
+  resulting status.
+
+EOF
+
+  usage
+  return 0
+}
 
 # rand_name: outputs a random name of N-1 characters, with the first char being
 # a random uppercase letter.
@@ -30,14 +78,16 @@ function rand_name() {
 #
 function parse_cmd() {
 
-  local opts='f:'
-  local long_opts='replica:,kube-master:,volname:,size:'
+  local long_opts='help,replica:,kube-master:,volname:,size:'
   local first
 
-  eval set -- "$(getopt -o $opts --long $long_opts -- $@)"
+  eval set -- "$(getopt -o ' ' --long $long_opts -- $@)"
 
   while true; do
       case "$1" in
+        --help)
+          help; exit 0
+        ;;
         --replica)
           REPLICA_CNT=$2; shift 2; continue
         ;;
@@ -50,9 +100,6 @@ function parse_cmd() {
         --size) # required
           VOLSIZE=$2; shift 2; continue
         ;;
-        -f)
-          OUTFILE=$2; shift 2; continue
-        ;;
         --)
           shift; break
         ;;
@@ -64,22 +111,18 @@ function parse_cmd() {
   # check any required args and assign defaults
   [[ -z "$VOLSIZE" ]] && {
     echo "Syntax error: volume size (--size) is required";
-    exit -1; }
+    usage;
+    return 1; }
 
   [[ -z "$NODE_SPEC" ]] && {
     echo "Syntax error: node-spec-list argument is missing";
+    usage;
     return 1; }
 
   if [[ -z "$VOLNAME" ]]; then
     # generate a random volname
     VOLNAME=$(rand_name 16)
     echo "INFO: volume name omitted, using random name \"$VOLNAME\""
-  fi
-
-  if [[ -z "$OUTFILE" ]]; then
-    # default output file is VOLNAME+.yaml
-    OUTFILE="${VOLNAME}.yaml"
-    echo "INFO: output yaml file name omitted, using \"$OUTFILE\""
   fi
 
   if [[ -z "$REPLICA_CNT" ]]; then
