@@ -16,7 +16,7 @@ function usage() {
 
   Usage:
     newvol.sh [--replica <r>] [--kube-master <node> ] [--volname <vname>] \
-           --size <n>  <nodeSpec>
+           --size <n>  <nodeSpec | storage-node>
 
   where:
 
@@ -24,16 +24,17 @@ function usage() {
     node      : kubernetes master node, default is localhost
     vname     : name of existing or new glusterfs volume
     n         : (required) size to be provisioned to kubernetes persistent
-                storage pool
+                storage pooli, eg 20Gi.
     nodeSpec  : (required) list of 1 or more storage nodes. If <vname> is new
-                then this list must contain at list 2 nodes and the brick mount
-                and block device path must be specified per node using ":" as a
-                separator, eg. "node1:/mnt/brick:/dev/VG1/LV1". The brick and
+      or        then this list must contain at list 2 nodes and the brick mount
+    storage-    and block device path must be specified per node using ":" as a
+     node       separator, eg. "node1:/mnt/brick:/dev/VG1/LV1". The brick and
                 block dev names do not need to be repeated for subsequent nodes
                 if same names are used on each node in the list. If <vname> 
-                exists then only the node names are required in the nodeSpec
-                list (brick and block dev names can be omitted and are ignored).
-                The node names are needed to define storage endpoints.
+                exists then only the node name of any storage node spanned by
+                the volume is required. The brick and block dev names can be
+                omitted and are ignored. Node names are needed to define the
+                storage endpoints.
    
 EOF
   return 0
@@ -115,7 +116,7 @@ function parse_cmd() {
     return 1; }
 
   [[ -z "$NODE_SPEC" ]] && {
-    echo "Syntax error: node-spec-list argument is missing";
+    echo "Syntax error: node-spec argument is missing";
     usage;
     return 1; }
 
@@ -143,31 +144,31 @@ function parse_cmd() {
 # arrays is:
 #   NODE_BRKMNTS[<node>]="<brickmnt>[ <brkmnt1>][ <brmknt2>]..."
 #   NODE_BLKDEVS[<node>]="<blkdev>[ <blkdev>][ <blkdev>]..."
+# Note: both NODE_BRKMNTS and NODE_BLKDEVs can be empty of values. This occurs
+#   when only a single storage node is specified, as is the case when the
+#   supplied volume already exists.
 # The brick mount and block dev values are a lists. Most times the list
 # contains only one brick-mnt/block-dev, but to handle the case of the same
-# node repeated with different brick-mnt and/or block-dev paths we use a list.
+# node repeated with different brick-mnt and/or block-dev paths a list is used.
 # Returns 1 on errors.
 #
 function parse_nodes_brkmnts_blkdevs() {
 
   local node_spec=(${NODE_SPEC[0]//:/ }) # split after subst ":" with space
-  local def_brkmnt=${node_spec[1]} # default
-  local def_blkdev=${node_spec[2]} # default
-  local brkmnts=(); local blkdev; local brkmnt
-
-  if [[ -z "$def_brkmnt" || -z "$def_blkdev" ]] ; then
-    echo "ERROR: expect a brick mount and block device to immediately follow the first node (each separated by a \":\")"
-    return 1
-  fi
+  local def_brkmnt=${node_spec[1]} # default, may be empty
+  local def_blkdev=${node_spec[2]} # default, may be empty
+  local brkmnts=(); local blkdev; local brkmnt; local items; local cnt
 
   # remove trailing / if present in default brkmnt
-  def_brkmnt="${def_brkmnt%/}"
+  def_brkmnt="${def_brkmnt%/}" #note, def_brkmnt may be empty
 
   # parse out list of nodes, format: "node[:brick-mnt][:blk-dev]"
   for node_spec in ${NODE_SPEC[@]}; do
       node=${node_spec%%:*}
+      items=(${node_spec//:/ }) # subst any :s with a space to make an array
+      cnt=${#items[@]}; ((cnt--))
       # fill in missing brk-mnts and/or blk-devs
-      case "$(grep -o ':' <<<"$node_spec" | wc -l)" in # num of ":"s
+      case $cnt in # num of ":"s
           0) # brkmnt and blkdev omitted
              NODE_BRKMNTS[$node]+="$def_brkmnt "
              NODE_BLKDEVS[$node]+="$def_blkdev "
@@ -292,8 +293,8 @@ function nodes_to_ips() {
 # vol_exists: invokes gluster vol info to see if the passed in volunme  exists.
 # Returns 1 on errors. 
 # Args:
-#   $1=volume name,
-#   $2=any storage node where gluster cli can be run.
+#   $1=volume name, $2=any storage node where gluster cli can be run.
+#
 function vol_exists() {
 
   local vol="$1"; local node="$2"
@@ -304,6 +305,28 @@ function vol_exists() {
   return 0 # true
 }
 
+# find_nodes: output the list of nodes spanned by the passed-in volume.
+# Returns 1 on errors. 
+# Args:
+#   $1=volume name, 2=any storage node where gluster cli can be run.
+#
+function find_nodes() {
+
+  local vol="$1"; local node="$2"
+  local out; local err
+
+  # volume is expected to exist
+  out="$(ssh root@$node "gluster volume status $vol \
+	| grep -w ^Brick" \
+	| cut -d' ' -f2 \
+	| cut -d: -f1)
+  "
+  err=$?
+
+  echo "$out"
+  (( err != 0 )) && return 1
+  return 0
+}
 # check_blkdevs: check that the list of block devices are likely to be block
 # devices. Returns 1 on errors.
 #
@@ -602,6 +625,30 @@ parse_cmd $@ || exit -1
 # extract nodes, brick mnts and blk devs arrays from NODE_SPEC
 parse_nodes_brkmnts_blkdevs || exit -1
 
+# use the first storage node for all gluster cli cmds
+FIRST_NODE=${NODES[0]}
+
+# check for passwordless ssh connectivity to the first_node
+check_ssh $FIRST_NODE || exit 1
+
+# if the volume already exists then discover its nodes, else make sure the
+# nodeSpec list was specified correctly
+if vol_exists $VOLNAME $FIRST_NODE; then
+  VOL_EXISTS=1 #true
+  # find all nodes spanned by volume
+  NODES=($(find_nodes $VOLNAME $FIRST_NODE))
+  (( $? != 0 )) || [[ -z "$NODES" ]] && {
+    echo "ERROR: nodes spanned by \"$VOLNAME\" cannot be determined: ${NODES[@]}"; 
+    exit 1; }
+else
+  VOL_EXISTS=0 #false
+  # make sure node-spec was fully specified
+  [[ -z "$NODE_BRKMNTS" || -z "$NODE_BLKDEVS" ]] && {
+    echo "ERROR: volume \"VOLNAME\" doesn't exist, therfore its brick mounts and block device paths must be supplied";
+    usage;
+    exit -1; }
+fi
+ 
 # for cases where storage nodes are repeated there is some improved efficiency
 # in reducing the nodes to just the unique nodes
 UNIQ_NODES=($(uniq_nodes ${NODES[*]}))
@@ -610,14 +657,10 @@ UNIQ_NODES=($(uniq_nodes ${NODES[*]}))
 # nodes provided by the user
 nodes_to_ips ${UNIQ_NODES[*]}
 
-# use the first storage node for all gluster cli cmds
-FIRST_NODE=${NODES[0]}
-
 # check for passwordless ssh connectivity to nodes
 check_ssh ${UNIQ_NODES[*]} $KUBE_MSTR || exit 1
 
-# if the volume already exists then skip setup, create, and start of vol
-if ! vol_exists $VOLNAME $FIRST_NODE; then
+if (( ! VOL_EXISTS)); then
   check_blkdevs || exit 1 # are block devs likely actual block devices?
   setup_nodes   || exit 1 # setup each storage node, eg. mkfs, etc...
   create_vol    || exit 1
