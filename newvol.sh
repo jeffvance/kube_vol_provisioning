@@ -644,7 +644,7 @@ else
   VOL_EXISTS=0 #false
   # make sure node-spec was fully specified
   [[ -z "$NODE_BRKMNTS" || -z "$NODE_BLKDEVS" ]] && {
-    echo "ERROR: volume \"VOLNAME\" doesn't exist, therfore its brick mounts and block device paths must be supplied";
+    echo "ERROR: volume \"VOLNAME\" is new, therefore its brick mounts and block device paths must be supplied";
     usage;
     exit -1; }
 fi
