@@ -327,6 +327,7 @@ function find_nodes() {
   (( err != 0 )) && return 1
   return 0
 }
+
 # check_blkdevs: check that the list of block devices are likely to be block
 # devices. Returns 1 on errors.
 #
