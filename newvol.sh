@@ -561,7 +561,7 @@ function make_yaml() {
     buf+='  glusterfs:\n'
     buf+="    path: $VOLNAME\n"
     buf+='    readOnly: true\n'
-    buf+='    endpoints: $ENDPOINTS_NAME\n'
+    buf+="    endpoints: $ENDPOINTS_NAME\n"
 
     echo -e -n "$buf" >$f
     YAML_FILES+="$f "

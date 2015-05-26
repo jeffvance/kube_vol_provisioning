@@ -22,7 +22,7 @@ in the trusted storage pool,
   :-: | ------------------
   r | replica count for each volume, default=2.
   node | name of kube-master node, default is localhost
-  vname | volume name, default is a random name, default is a random 16 character name starting with an uppercase letter.
+  vname | volume name, default is a random 16 character name starting with an uppercase letter.
   n | size of volume to be provisioned to kubernetes, eg. 20Gi.
   nodeSpec | list of storage-node:brick-mnt-path:brick-dev-path if *vname* is new. Eg. *"rhs-node-1:/mnt/brick:/dev/vg1/lv1 rhs-node-2:/mnt/brick:/dev/vg1/lv1 ..."*. If *vname* already exists then just a single storage node spanned by *vname* is required.
 
