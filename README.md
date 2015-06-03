@@ -3,7 +3,7 @@ Kubernetes supports persistent storage via a pool of volumes with defined capaci
 
 Red Hat Gluster Storage (RHGS) volumes can be used as an underlying storage system. An advantage of using distributed storage in a kubernetes deployment is that all pods can have access to the same storage regardless of which node they are scheduled to run on.
 
-The steps shown in the document describe how to make RHGS storage available to the kubernetes volume pool, how to create a claim against that storage, how to create a pod that uses that storage, and how to test that it is all working correctly. There is also a script, shown in the addendum, that automates the creation of a RHGS volume and assoicate YAML files so that the volume is available to kubernetes.
+The steps shown in the document describe how to make RHGS storage available to the kubernetes volume pool, how to create a claim against that storage, how to create a pod that uses that storage, and how to test that it is all working correctly. There is also a script, shown in the addendum, that automates the creation of a RHGS volume and assoicated YAML files so that the volume is available to kubernetes.
 
 ###Create a Red Hat Gluster Storage Volume
 It is assumed that you have a RHGS volume available. If not please follow the steps outlined in the Red Hat Storage Administration Guide, here: https://access.redhat.com/documentation/en-US/Red_Hat_Storage/3/html/Administration_Guide/chap-Red_Hat_Storage_Volumes.html
