@@ -150,8 +150,10 @@ mypod     172.17.0.1                                 f21-3/    name=frontendhttp
 ###Prove it's Working
 We will show that the pod created on the node "f21-3" has mounted the RHGS volume and that files existing on that volume are available to the pod.
 
-On f21-3 get the container id using *docker ps*:
+On the "f21-3" node get the container id using *docker ps*:
 ```
+ssh f21-3
+
 docker ps
 CONTAINER ID        IMAGE                                  COMMAND             CREATED             STATUS              PORTS               NAMES
 3d3397bf69eb        fedora/nginx:latest                    "/usr/sbin/nginx"   3 minutes ago       Up 3 minutes                            k8s_myfrontend.32ed1327_mypod_default_6cee84e0-0a37-11e5-bb68-5254007d1adf_c524f139   
@@ -164,10 +166,12 @@ docker exec -it 3d3397bf69eb /bin/bash
 
 bash-4.3# mount | grep gluster
 192.168.122.21:HadoopVol on /usr/share/nginx/html/test type fuse.glusterfs (rw,relatime,user_id=0,group_id=0,default_permissions,allow_other,max_read=131072)
+
+exit
 ```
 Above we see that the RHGS volume made available to the kubernetes persistent volume ("HadoopVol") has been mounted within the container executing inside the pod we created ("mypod"). We also see that "/usr/share/nginx/html/test" is the target of the mount point.
 
-We can access files on the RHGS volume as follows: First, on one of the RHGS storage nodes we see that the volume ("HadoopVol") is mounted on "/mnt/glusterfs/HadoopVol", and we've created a file there named "index.html":
+We can access files on the RHGS volume. First, on one of the RHGS storage nodes we see that the volume ("HadoopVol") is mounted on "/mnt/glusterfs/HadoopVol", and we've created a file there named "index.html":
 ```
 ssh rhs-1.vm #192.168.122.21
 
@@ -188,7 +192,7 @@ cat /mnt/glusterfs/HadoopVol/index.html
 </html>
 
 ```
-Next, on the "f21-3" kubernetes node we can also access the same index.html file. Note that the IP address for "mypod" is shown to be 172.17.0.1 (see the *kubectl get pod mypod* output above), and that the mount point for the volume is "/usr/share/nginx/html/test".
+Next, on the "f21-3" kubernetes node we can also access the same "index.html" file. Note that the IP address for "mypod" is shown to be 172.17.0.1 (see the *kubectl get pod mypod* output above), and that the mount point for the volume is "/usr/share/nginx/html/test".
 ```
 ssh f21-3 #same kubernetes node running the pod
 # now shell into the running container (as was also shown above)
@@ -208,7 +212,7 @@ bash-4.3# cat /usr/share/nginx/html/test/index.html
 
 exit
 ```
-We see the same index.html file as seen when we ssh'd to one of the RHGS storage noded. Also, we can use *curl* to fetch the same file:
+We see the same "index.html" file as seen when we ssh'd to one of the RHGS storage nodes. Also, we can use *curl* to fetch the same file:
 ```
 ssh f21-3 #same kubernetes node running the pod
 
