@@ -100,7 +100,7 @@ myclaim-1   map[]     Bound     pv0001
 Note that the size of the PVC is only 1Gi and the status is now shown as "Bound".
 
 ###Create a Pod Using RHGS Storage
-Once the claim (PVC) is bound to a persistent storage volume (PV) the next step is to create a pod that can access that storage. The YAML file below creates such a pod. It runs a nginx container with its web document rooted to /usr/share/nginx/html/. The nginx container listens on port 80 and defines a volume mount named "mypd" (my-persistent-disk) which uses the previously created "myclaim-1" claim. 
+Once the claim (PVC) is bound to a persistent storage volume (PV) the next step is to create a pod that can access that storage. The YAML file below creates such a pod. It runs a nginx container with a mount defined as  "/usr/share/nginx/html/test". The document root for nginx is typically "/usr/share/nginx/html" so only files in the "test" directory under the document root are accessed from our RHGS volume. The nginx container listens on port 80 and defines a volume mount named "mypd" (my-persistent-disk) which uses the previously created "myclaim-1" claim. 
 
 file: *gluster-pod.yaml*
 ```
@@ -157,18 +157,17 @@ CONTAINER ID        IMAGE                                  COMMAND             C
 3d3397bf69eb        fedora/nginx:latest                    "/usr/sbin/nginx"   3 minutes ago       Up 3 minutes                            k8s_myfrontend.32ed1327_mypod_default_6cee84e0-0a37-11e5-bb68-5254007d1adf_c524f139   
 8cc34564272c        gcr.io/google_containers/pause:0.8.0   "/pause"            3 minutes ago       Up 3 minutes                            k8s_POD.fa30ecd5_mypod_default_6cee84e0-0a37-11e5-bb68-5254007d1adf_bfc1f373    
 ```
-We see that the container id is "3d3397bf69eb". We can shell into this container to see the RHGS mount as follows:
+We see that the container id is "3d3397bf69eb". We shell into this container to see the RHGS mount as follows:
 ```
 docker exec -it 3d3397bf69eb /bin/bash
-## now we're runnuing bash from within the container
+## now we're running bash from within the container
 
 bash-4.3# mount | grep gluster
 192.168.122.21:HadoopVol on /usr/share/nginx/html/test type fuse.glusterfs (rw,relatime,user_id=0,group_id=0,default_permissions,allow_other,max_read=131072)
 ```
-Above we see that the RHGS volume made available to the kubernetes persistent volume (HadoopVol) has been mounted within the container executing inside the pod we created (mypod). We also see that the web document root (/usr/share/nginx/html/test) is the target of the mount point.
+Above we see that the RHGS volume made available to the kubernetes persistent volume ("HadoopVol") has been mounted within the container executing inside the pod we created ("mypod"). We also see that "/usr/share/nginx/html/test" is the target of the mount point.
 
-We can access files on the RHGS volume as follows:
-First, on one of the RHGS storage nodes we see that the volume (HadoopVol) is mounted on "/mnt/glusterfs/HadoopVol", and we've created a file named "index.html":
+We can access files on the RHGS volume as follows: First, on one of the RHGS storage nodes we see that the volume ("HadoopVol") is mounted on "/mnt/glusterfs/HadoopVol", and we've created a file there named "index.html":
 ```
 ssh rhs-1.vm #192.168.122.21
 
@@ -189,10 +188,10 @@ cat /mnt/glusterfs/HadoopVol/index.html
 </html>
 
 ```
-Next, on the "F21-3" kubernetes node we can also access the same index.html file. Note that the IP address for "mypod" is shown to be 172.17.0.1 (see the kubectl get pod mypod output above), and that the web root is "/usr/share/nginx/html/".
+Next, on the "f21-3" kubernetes node we can also access the same index.html file. Note that the IP address for "mypod" is shown to be 172.17.0.1 (see the *kubectl get pod mypod* output above), and that the mount point for the volume is "/usr/share/nginx/html/test".
 ```
-ssh f21-3
-# now shell into the running container (as shown above)
+ssh f21-3 #same kubernetes node running the pod
+# now shell into the running container (as was also shown above)
 docker exec -it 3d3397bf69eb /bin/bash
 
 bash-4.3# cat /usr/share/nginx/html/test/index.html
@@ -207,6 +206,7 @@ bash-4.3# cat /usr/share/nginx/html/test/index.html
   </body>
 </html>
 
+exit
 ```
 We see the same index.html file as seen when we ssh'd to one of the RHGS storage noded. Also, we can use *curl* to fetch the same file:
 ```
@@ -227,6 +227,8 @@ curl 172.17.0.1:80/test/index.html
 ```
 
 ##Addendum
+To help automate the creation of a new RHGS volume and of the various YAML files, a script named *newvol.sh* is provided.
+
 The *newvol.sh* script performs the following:
 
 * optionally creates a new gluster volume if the supplied volume does not exist
@@ -238,7 +240,7 @@ in the trusted storage pool,
 * creates a persistent volume yaml file representing the new storage capacity,
 * executes kubectl to make the new storage visible to kubernetes.
 
-## Usage:
+### Usage:
 
 ```
  newvol.sh [--replica <r>] [--kube-master <node> ] [--volname <vname>] \
