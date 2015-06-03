@@ -544,7 +544,7 @@ function make_yaml() {
 
   function make_persistent_vol_yaml() {
 
-    local f="${prefix}-storage.yaml"
+    local f="${prefix}-pv.yaml"
     local buf=''
 
     buf+='kind: PersistentVolume\n'
