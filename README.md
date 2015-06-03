@@ -147,9 +147,54 @@ mypod     172.17.0.1                                 f21-3/    name=frontendhttp
                        myfrontend     fedora/nginx                                 Running   About a minute 
 ```
 
-###Showing it Worked
+###Prove that it Worked
 We will show that the pod created on the node "f21-3" has mounted the RHGS volume and that files existing on that volume are available to the pod.
 
+On f21-3 get the container id using docker ps:
+```
+docker ps
+CONTAINER ID        IMAGE                                  COMMAND             CREATED             STATUS              PORTS               NAMES
+3d3397bf69eb        fedora/nginx:latest                    "/usr/sbin/nginx"   3 minutes ago       Up 3 minutes                            k8s_myfrontend.32ed1327_mypod_default_6cee84e0-0a37-11e5-bb68-5254007d1adf_c524f139   
+8cc34564272c        gcr.io/google_containers/pause:0.8.0   "/pause"            3 minutes ago       Up 3 minutes                            k8s_POD.fa30ecd5_mypod_default_6cee84e0-0a37-11e5-bb68-5254007d1adf_bfc1f373    
+```
+We see that the container id is "3d3397bf69eb". We can shell into this container to see the RHGS mount as follows:
+```
+docker exec -it 3d3397bf69eb /bin/bash
+## now we're runnuing bash from within the container
+
+bash-4.3# mount | grep gluster
+192.168.122.21:HadoopVol on /usr/share/nginx/html/test type fuse.glusterfs (rw,relatime,user_id=0,group_id=0,default_permissions,allow_other,max_read=131072)
+```
+Above we see that the RHGS volume made available to the kubernetes persistent volume (HadoopVol) has been mounted within the container executing inside the pod we created (mypod). We also see that the web document root (/usr/share/nginx/html/test) is the target of the mount point.
+
+We can access files on the RHGS volume as follows:
+First, on one of the RHGS storage nodes we see that the volume (HadoopVol) is mounted on "/mnt/glusterfs/HadoopVol", and we've created a file named "index.html":
+```
+ssh rhs-1.vm #192.168.122.21
+
+mount | grep glusterfs
+rhs-1.vm:/HadoopVol on /mnt/glusterfs/HadoopVol type fuse.glusterfs (rw,default_permissions,allow_other,max_read=131072)
+
+cat /mnt/glusterfs/HadoopVol/index.html
+
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta http-equiv="Content-Type" content="text/html;charset=utf-8"/>
+  </head>
+  <body>
+    <div id="body">
+    <p>Test paragraph...</p>
+  </body>
+</html>
+
+```
+Next, on the "F21-3" kubernetes node we can also access the same index.html file. Note that the IP address for "mypod" is shown to be 172.17.0.1 (see the kubectl get pod mypod output above).
+```
+ssh f21-3
+
+
+```
 
 
 
