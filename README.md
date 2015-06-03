@@ -231,17 +231,17 @@ curl 172.17.0.1:80/test/index.html
 ```
 
 ##Addendum
-To help automate the creation of a new RHGS volume and of the various YAML files, a script named *newvol.sh* is provided.
+To help automate the creation of a RHGS volume and the creation of the endpoints and persistent volume (pv) YAML files, a script named *newvol.sh* is provided.
 
 The *newvol.sh* script performs the following:
 
 * optionally creates a new gluster volume if the supplied volume does not exist
 in the trusted storage pool,
 * if the volume is new:
- * ensures that the underlying bricks are mounted on an xfs file system,
- * creates and starts a new gluster volume,
-* creates an endpoints  yaml file representing the glusterfs storage nodes,
-* creates a persistent volume yaml file representing the new storage capacity,
+ * ensures that the underlying bricks are mounted on an xfs file system.
+ * creates and starts a new gluster volume.
+* creates an endpoints yaml file representing the glusterfs storage nodes. This file is named "*vname*-endpoints.yaml".
+* creates a persistent volume (pv) yaml file representing the new storage capacity. This file is named "*vname*-pv.yaml".
 * executes kubectl to make the new storage visible to kubernetes.
 
 ### Usage:
@@ -259,4 +259,4 @@ in the trusted storage pool,
   n | size of volume to be provisioned to kubernetes, eg. 20Gi.
   nodeSpec | list of storage-node:brick-mnt-path:brick-dev-path if *vname* is new. Eg. *"rhs-node-1:/mnt/brick:/dev/vg1/lv1 rhs-node-2:/mnt/brick:/dev/vg1/lv1 ..."*. If *vname* already exists then just a single storage node spanned by *vname* is required.
 
-The file names for the two new yaml files created are the volume name with "-endpoints.yaml" or "-storage.yaml" appended. These files are overwritten if they exist.
+The endpoints yaml file is named "*vname*-endpoints.yaml" and the persistent volume yaml file is named  "*vname*-pv.yaml". The volume name (*vname*) is down-cased if needed. So, if the supplied volume name is "MyVol" then the endpoints file will be named "myvol-endpoints.yaml" and the PV file will be named "myvol-pv.yaml". These files are overwritten if they already exist.
