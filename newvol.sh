@@ -1,9 +1,7 @@
 #!/bin/bash
 #
-# Optionally creates a new volume in an existing trusted storage pool, and makes
-# the passed-in volume available to kubernetes.
-#
-# TODO:
+# Optionally creates a new volume in an existing trusted storage pool, and
+# makes the passed-in volume available to kubernetes.
 #
 
 # functions #
@@ -24,7 +22,7 @@ function usage() {
     node      : kubernetes master node, default is localhost
     vname     : name of existing or new glusterfs volume
     n         : (required) size to be provisioned to kubernetes persistent
-                storage pooli, eg 20Gi.
+                storage pool, eg 20Gi.
     nodeSpec  : (required) list of 1 or more storage nodes. If <vname> is new
       or        then this list must contain at list 2 nodes and the brick mount
     storage-    and block device path must be specified per node using ":" as a
@@ -544,7 +542,7 @@ function make_yaml() {
     YAML_FILES+="$f "
   }
 
-  function make_persistent_storage_yaml() {
+  function make_persistent_vol_yaml() {
 
     local f="${prefix}-storage.yaml"
     local buf=''
@@ -557,11 +555,11 @@ function make_yaml() {
     buf+='  capacity:\n'
     buf+="    storage: $VOLSIZE\n"
     buf+='  accessModes:\n'
-    buf+='    - ReadWriteOnce\n'
+    buf+='    - ReadWriteMany\n'
     buf+='  glusterfs:\n'
     buf+="    path: $VOLNAME\n"
-    buf+='    readOnly: true\n'
     buf+="    endpoints: $ENDPOINTS_NAME\n"
+    buf+='    readOnly: false\n'
 
     echo -e -n "$buf" >$f
     YAML_FILES+="$f "
@@ -569,7 +567,7 @@ function make_yaml() {
 
   # main #
   make_endpoints_yaml "$1"
-  make_persistent_storage_yaml "$1"
+  make_persistent_vol_yaml "$1"
 
   return 0
 }
@@ -672,7 +670,7 @@ fi
 # known to kubernetes
 make_yaml "$VOLNAME"
 
-# execute the kube persistent vol request
+# create the kube objects based on the yaml files
 do_kubectl $YAML_FILES || exit 1
 
 show_kube_status
