@@ -259,4 +259,4 @@ in the trusted storage pool,
   n | size of volume to be provisioned to kubernetes, eg. 20Gi.
   nodeSpec | list of storage-node:brick-mnt-path:brick-dev-path if *vname* is new. Eg. *"rhs-node-1:/mnt/brick:/dev/vg1/lv1 rhs-node-2:/mnt/brick:/dev/vg1/lv1 ..."*. If *vname* already exists then just a single storage node spanned by *vname* is required.
 
-The endpoints yaml file is named "*vname*-endpoints.yaml" and the persistent volume yaml file is named  "*vname*-pv.yaml". The volume name (*vname*) is down-cased if needed. So, if the supplied volume name is "MyVol" then the endpoints file will be named "myvol-endpoints.yaml" and the PV file will be named "myvol-pv.yaml". These files are overwritten if they already exist.
+The endpoints yaml file is named "*vname*-endpoints.yaml" and the persistent volume yaml file is named  "*vname*-pv.yaml". So, if the supplied volume name is "MyVol" then the endpoints file will be named "MyVol-endpoints.yaml" and the PV file will be named "MyVol-pv.yaml". These files are overwritten if they already exist.
