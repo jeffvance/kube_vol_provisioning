@@ -31,7 +31,7 @@ subsets:
       - port: 1
         protocol: TCP
 ```
-The endpoints are created and visible via kubectl as follows:
+The endpoints are created and visible via *kubectl* as follows:
 ```
 kubectl create -f gluster-endoints.yaml
 
@@ -61,7 +61,7 @@ spec:
     endpoints: glusterfs-cluster #name of previously created endpoints
     readOnly: false
 ```
-The persistent volume (pv) is created and visible via kubectl as follows:
+The persistent volume (pv) is created and visible via *kubectl* as follows:
 ```
 kubectl create -f gluster-pv.yaml 
 persistentvolumes/pv0001
@@ -88,7 +88,7 @@ spec:
     requests:
       storage: 1Gi  #only 1Gi is being claimed here
 ```
-The persistent volume claim (pvc) is created and visible via kubectl as follows:
+The persistent volume claim (pvc) is created and visible via *kubectl* as follows:
 ```
 kubectl create -f gluster-claim.yaml 
 persistentvolumeclaims/myclaim-1
@@ -100,7 +100,7 @@ myclaim-1   map[]     Bound     pv0001
 Note that the size of the PVC is only 1Gi and the status is now shown as "Bound".
 
 ###Create a Pod Using RHGS Storage
-Once the claim (PVC) is bound to a persistent storage volume (PV) the next step is to create a pod that can access that storage. The YAML file below creates such a pod. It runs a nginx container with its web document rooted to /usr/share/nginx/html/test. The nginx container listens on port 80 and defined a volume mount named "mypd" (my-persistent-disk) which uses the previously create claim named "myclaim-1". 
+Once the claim (PVC) is bound to a persistent storage volume (PV) the next step is to create a pod that can access that storage. The YAML file below creates such a pod. It runs a nginx container with its web document rooted to /usr/share/nginx/html/. The nginx container listens on port 80 and defines a volume mount named "mypd" (my-persistent-disk) which uses the previously created "myclaim-1" claim. 
 
 file: *gluster-pod.yaml*
 ```
@@ -126,7 +126,7 @@ spec:
         claimName: myclaim-1
 
 ```
-The pod is created and visible via kubectl as follows:
+The pod is created and visible via *kubectl* as follows:
 ```
 kubectl create -f gluster-pod.yaml 
 pods/mypod
@@ -147,10 +147,10 @@ mypod     172.17.0.1                                 f21-3/    name=frontendhttp
                        myfrontend     fedora/nginx                                 Running   About a minute 
 ```
 
-###Prove that it Worked
+###Prove it's Working
 We will show that the pod created on the node "f21-3" has mounted the RHGS volume and that files existing on that volume are available to the pod.
 
-On f21-3 get the container id using docker ps:
+On f21-3 get the container id using *docker ps*:
 ```
 docker ps
 CONTAINER ID        IMAGE                                  COMMAND             CREATED             STATUS              PORTS               NAMES
@@ -189,15 +189,42 @@ cat /mnt/glusterfs/HadoopVol/index.html
 </html>
 
 ```
-Next, on the "F21-3" kubernetes node we can also access the same index.html file. Note that the IP address for "mypod" is shown to be 172.17.0.1 (see the kubectl get pod mypod output above).
+Next, on the "F21-3" kubernetes node we can also access the same index.html file. Note that the IP address for "mypod" is shown to be 172.17.0.1 (see the kubectl get pod mypod output above), and that the web root is "/usr/share/nginx/html/".
 ```
 ssh f21-3
+# now shell into the running container (as shown above)
+docker exec -it 3d3397bf69eb /bin/bash
 
+bash-4.3# cat /usr/share/nginx/html/test/index.html
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta http-equiv="Content-Type" content="text/html;charset=utf-8"/>
+  </head>
+  <body>
+    <div id="body">
+    <p>Test paragraph...</p>
+  </body>
+</html>
 
 ```
+We see the same index.html file as seen when we ssh'd to one of the RHGS storage noded. Also, we can use *curl* to fetch the same file:
+```
+ssh f21-3 #same kubernetes node running the pod
 
+curl 172.17.0.1:80/test/index.html
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta http-equiv="Content-Type" content="text/html;charset=utf-8"/>
+  </head>
+  <body>
+    <div id="body">
+    <p>Test paragraph...</p>
+  </body>
+</html>
 
-
+```
 
 ##Addendum
 The *newvol.sh* script performs the following:
