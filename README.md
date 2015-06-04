@@ -222,9 +222,9 @@ my-httpd   172.17.0.4                                  f21-2/    name=httpd     
 mypod      172.17.0.3                                  f21-3/    name=frontendhttp   Running   25 minutes      
                         myfrontend      fedora/nginx                                 Running   24 minutes 
 ```
-The nginx pod ("mypod") is running on the "f21-3" node with an ip address of 172.17.0.3, and the httpd pod ("my-httpd") is running on "f21-2" with an ip address of 172.17.0.4.
+The nginx pod ("mypod") is running on the "f21-3" node with an ip address of 172.17.0.3, while the httpd pod ("my-httpd") is running on the "f21-2" node with an ip address of 172.17.0.4.
 
-First, on one of the RHGS storage nodes we see that the volume ("HadoopVol") is mounted on "/mnt/glusterfs/HadoopVol", and that we've created a file there named "index.html":
+First, on any one of the RHGS storage nodes we see that the volume ("HadoopVol") is mounted on "/mnt/glusterfs/HadoopVol", and that we've created a file there named "index.html":
 ```
 ssh rhs-1.vm #192.168.122.21
 
@@ -244,7 +244,7 @@ cat /mnt/glusterfs/HadoopVol/index.html
   </body>
 </html>
 ```
-Next, we ssh into f21-3 to look at the nginx container and to verify that the glusterfs mount is present, and then we access the index.html file residing the RHGS volume.
+Next, we ssh into f21-3 to look at the nginx container and to verify that the glusterfs mount is present. Lastly, we access the index.html file residing on the RHGS volume.
 
 On the "f21-3" node get the container id using *docker ps*:
 ```
@@ -278,7 +278,7 @@ bash-4.3# cat /usr/share/nginx/html/test/index.html
 
 bash-4.3# exit
 ```
-Above we see that the RHGS volume (named "HadoopVol"), which was made available to the kubernetes persistent volume, has been mounted within the container executing inside the "mypod" pod. We also see that "/usr/share/nginx/html/test" is the target of the mount point. And, we accessed the index.html file, from the RHGS volume, using *cat*. 
+Above we see that the RHGS volume (named "HadoopVol"), which was made available to the kubernetes persistent volume, has been mounted within the container executing inside the "mypod" pod. We also see that "/usr/share/nginx/html/test" is the target of the mount point. And, we have accessed the index.html file, on the RHGS volume, using *cat*. 
 
 We can also use *curl <ip-of-target-pod>* to fetch the same file:
 ```
@@ -296,6 +296,26 @@ curl 172.17.0.3:80/test/index.html
   </body>
 </html>
 ```
+
+We can ssh into f21-2, where the httpd pod is running, and perform the same steps to show that the RHGS volume has been mouted in the pod's container and that the index.html file can be accessed, just as we did on node f21-2. And, as we did above, we can use *curl* to access the index.html file too:
+```
+ssh f21-2
+curl 172.17.0.4:80/test/index.html
+
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta http-equiv="Content-Type" content="text/html;charset=utf-8"/>
+  </head>
+  <body>
+    <div id="body">
+    <p>Test paragraph...</p>
+  </body>
+</html>
+
+```
+
+Note: to access files on the RHGS volume from a node other than the node where the pod is running requires a network overlay, such as flannel, and is beyond the scope of this document.
 
 
 ##Addendum
