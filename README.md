@@ -70,7 +70,7 @@ kubectl get pv
 NAME      LABELS    CAPACITY     ACCESSMODES   STATUS      CLAIM
 pv0001    <none>    2147483648   RWX           Available   
 ```
-Note that the size of the PV is 2Gi and the it is shown as "Available". Once a claim against some (or all) of this storage is created the status will change to "Bound".
+Note that the size of the PV is 2Gi and that its status is "Available". Once a claim against some (or all) of this storage is created the status will change to "Bound".
 
 ###Create a Persistent Volume Claim
 After you have created a persistent volume the next step is to create a claim against a portion of the persistent volume. The following YAML defines a claim for 1Gi of persistent storage.
@@ -97,7 +97,7 @@ kubectl get pvc myclaim-1
 NAME        LABELS    STATUS    VOLUME
 myclaim-1   map[]     Bound     pv0001
 ```
-Note that the size of the PVC is only 1Gi and the status is now shown as "Bound".
+Note that the size of the PVC is only 1Gi and that the status is now shown as "Bound".
 
 ###Create the First Pod Using RHGS Storage
 Once the claim (PVC) is bound to a persistent storage volume (PV) the next step is to create a pod to access that storage. The YAML file below creates such a pod. It runs a nginx container with a mount defined as  "/usr/share/nginx/html/test". The document root for nginx is typically "/usr/share/nginx/html" so only files in the "test" directory under the document root will be accessed from our RHGS volume. The nginx container listens on port 80 and defines a volume mount named "mypd" (my-persistent-disk) which uses the previously created "myclaim-1" claim. 
@@ -297,7 +297,7 @@ curl 172.17.0.3:80/test/index.html
 </html>
 ```
 
-We can ssh into f21-2, where the httpd pod is running, and perform the same steps to show that the RHGS volume has been mouted in the pod's container and that the index.html file can be accessed, just as we did on node f21-2. And, as we did above, we can use *curl* to access the index.html file too:
+We can ssh into f21-2, where the httpd pod is running, and perform the same steps to show that the RHGS volume has been mounted in the pod's container and that the index.html file can be accessed, just as we did on node f21-2. And, as we did above, we can use *curl* to access the index.html file too:
 ```
 ssh f21-2
 curl 172.17.0.4:80/test/index.html
