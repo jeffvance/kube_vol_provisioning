@@ -3,10 +3,10 @@ Kubernetes supports persistent storage via a pool of volumes with defined capaci
 
 Red Hat Gluster Storage (RHGS) volumes can be used as an underlying storage system. An advantage of using distributed storage in a kubernetes deployment is that all pods can have access to the same storage regardless of which node they are scheduled to run on.
 
-The steps shown in the document describe how to make RHGS storage available to the kubernetes volume pool, how to create a claim against that storage, how to create a pod that uses that storage, and how to test that it is all working correctly. There is also a script, shown in the addendum, that automates the creation of a RHGS volume and assoicated YAML files so that the volume is available to kubernetes.
+The steps shown in the document describe how to make RHGS storage available to the kubernetes volume pool, how to create a claim against that storage, how to create a pod that uses that storage, and how to test that it is all working correctly. You'll need kubernetes version 0.18+ for persistent gluster volumes to work correctly. There is also a script, shown in the addendum, that automates the creation of a RHGS volume and assoicated YAML files so that the volume is available to kubernetes.
 
 ###Create a Red Hat Gluster Storage Volume
-It is assumed that you have a RHGS volume available. If not please follow the steps outlined in the Red Hat Storage Administration Guide, here: https://access.redhat.com/documentation/en-US/Red_Hat_Storage/3/html/Administration_Guide/chap-Red_Hat_Storage_Volumes.html
+It is assumed that you have a RHGS volume available. If not please follow the steps outlined in the *Red Hat Storage Administration Guide*, here: https://access.redhat.com/documentation/en-US/Red_Hat_Storage/3/html/Administration_Guide/chap-Red_Hat_Storage_Volumes.html
 
 ### Create Endpoints Defining the Volume Topology
 Endpoints allow kubernetes to expose various services and to extend its REST API to include non-standard verbs. For RHGS volumes, endpoints define each storage node in the trusted pool. Here is a sample endpoint YAML file:
@@ -50,10 +50,10 @@ file: *gluster-pv.yaml*
 apiVersion: v1beta3
 kind: PersistentVolume
 metadata:
-  name: pv0001
+  name: pv0001   #a name of your choice
 spec:
   capacity:
-    storage: 2Gi
+    storage: 2Gi #the size of the rhgs volume to be allocated to kubernetes
   accessModes:
     - ReadWriteMany
   glusterfs:
@@ -80,7 +80,7 @@ file: *glusterfs-claim.yaml*
 kind: PersistentVolumeClaim
 apiVersion: v1beta3
 metadata:
-  name: myclaim-1
+  name: myclaim-1  #a name of your choice
 spec:
   accessModes:
     - ReadWriteMany
